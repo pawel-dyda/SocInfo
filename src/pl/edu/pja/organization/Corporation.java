@@ -36,11 +36,12 @@ public class Corporation extends Organization {
     private final PromotionUtil _promotionUtil;
     private final double _knowledgeUsabilityRate;
 
-    // private Map<Employee, Set<Employee>> _coworkers = new
-    // ConcurrentHashMap<>();
     private Map<Employee, Set<Employee>> _subordinates = new ConcurrentHashMap<>();
     private Map<Employee, Employee> _managers = new ConcurrentHashMap<>();
     private Employee _ceo;
+
+    private static final Comparator<Employee> compareByVirtualWork =
+            (a, b) -> (int) Math.floor((a.getVirtualWorkPerformed() - b.getVirtualWorkPerformed()));
 
     public Corporation(long seed, int levels, int subordinates, double knowledgeUsabilityRate) {
         super(seed);
@@ -111,10 +112,13 @@ public class Corporation extends Organization {
     public void start() {
         super.start();
         System.out.println("start");
-        for (long step = 1; step < 52; step++) {
+        for (long step = 1; step < 52*16; step++) {
             System.out.println("Step: " + step);
             updateKnowledge(step);
-            performResignations(step);
+            performResignations(step);            
+            if (isEndOfTheQuarter(step)) {
+                reduceEmployees(step);
+            }
             System.out.println(_ceo.getRealWorkPerformed());
         }
     }
@@ -137,10 +141,7 @@ public class Corporation extends Organization {
         ConcurrentMap<Boolean, List<Employee>> quitingEmployeesByPromotionStatus = quitingTopPerformers.stream()
                 .collect(groupingByConcurrent(this::shouldPromoteInternally));
 
-        quitingEmployeesByPromotionStatus.getOrDefault(EXTERNAL_HIRES, emptyList()).stream()
-                .forEach(hireReplacement(step));
-        quitingEmployeesByPromotionStatus.getOrDefault(INTERNAL_PROMOTIONS, emptyList()).stream()
-                .forEach(promoteInternally(step));
+        replaceEmployees(step, quitingEmployeesByPromotionStatus);
     }
 
     private List<Employee> findQuitingTopPerformers() {
@@ -152,10 +153,15 @@ public class Corporation extends Organization {
     }
 
     private List<Employee> findBadManagers() {
-        Set<Employee> allManagers = new HashSet<>(_managers.values());
+        Set<Employee> allManagers = getAllManagers();
         return allManagers.stream()
                 .filter(manager -> manager.getRealWorkPerformed() < 0d)
                 .collect(toList());
+    }
+
+    private Set<Employee> getAllManagers() {
+        Set<Employee> allManagers = new HashSet<>(_managers.values());
+        return allManagers;
     }
 
     private Optional<Employee> topPerformerPossiblyResigns(Employee manager) {
@@ -181,6 +187,13 @@ public class Corporation extends Organization {
             current = getManager(current).get();
         }
         return level;
+    }
+    
+    private void replaceEmployees(long step, ConcurrentMap<Boolean, List<Employee>> employeesByReplacementStatus) {
+        employeesByReplacementStatus.getOrDefault(EXTERNAL_HIRES, emptyList()).stream()
+        .forEach(hireReplacement(step));
+        employeesByReplacementStatus.getOrDefault(INTERNAL_PROMOTIONS, emptyList()).stream()
+        .forEach(promoteInternally(step));
     }
 
     private Consumer<Employee> hireReplacement(long step) {
@@ -230,6 +243,8 @@ public class Corporation extends Organization {
         // It's not likely that anybody will want to make drastic changes to the
         // structure
         replaceEmployee(promotionCandidate, _employeeFactory.createEmployee(this, hiringWeek));
+        // update knowledge - not all of what you know could be applied one level above
+        promotionCandidate.setKnowledge(promotionCandidate.getKnowledge() * _promotionUtil.getLevelUpKnowledgeApplicability());
         replaceEmployee(emp, promotionCandidate);
     }
 
@@ -242,9 +257,32 @@ public class Corporation extends Organization {
     }
 
     private Employee findBestSelfPromoter(Employee manager) {
-        Comparator<Employee> byVirtualWork = (a,
-                b) -> (int) Math.floor((a.getVirtualWorkPerformed() - b.getVirtualWorkPerformed()));
-        return getSubordinates(manager).stream().max(byVirtualWork).get();
+        return getSubordinates(manager).stream().max(compareByVirtualWork).get();
+    }
+    
+    private boolean isEndOfTheQuarter(long step) {
+        return step % 13 == 0;
+    }
+    
+    private void reduceEmployees(long step) {
+        Set<Employee> allManagers = getAllManagers();
+        ConcurrentMap<Boolean, List<Employee>> employeesForReplacement = allManagers.stream()
+                .map(this::peekEmployeeForReduction)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(groupingByConcurrent(this::shouldPromoteInternally));
+        replaceEmployees(step, employeesForReplacement);
+    }
+
+    private Optional<Employee> peekEmployeeForReduction(Employee manager) {
+        if (_promotionUtil.shouldReducePersonel()) {
+            if (_promotionUtil.shouldReduceSelfPromoter())
+                return Optional.of(manager).filter(Employee::isManager).map(this::findBestSelfPromoter);
+
+            return getSubordinates(manager).stream().min(compareByVirtualWork);
+        }
+
+        return Optional.empty();
     }
 
     @Override

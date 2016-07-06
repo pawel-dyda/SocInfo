@@ -125,6 +125,11 @@ public class Worker implements Employee {
     }
 
     @Override
+    public void setKnowledge(double knowledge) {
+        _knowledge = knowledge;
+    }
+    
+    @Override
     public int hashCode() {
         return _employeeId;
     }

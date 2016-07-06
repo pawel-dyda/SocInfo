@@ -12,4 +12,6 @@ public interface Employee {
 
 	boolean isManager();
 
+    void setKnowledge(double knowledge);
+
 }
