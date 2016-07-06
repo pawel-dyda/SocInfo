@@ -24,11 +24,13 @@ import pl.edu.pja.util.PromotionUtil;
 
 public class Corporation extends Organization {
 
+
     private static final long serialVersionUID = 3284328451738747302L;
 
     private static final int INITIAL_EMPLOYEE_ID = 1000;
     private static final int START_WEEK = 0;
     private static final Boolean EXTERNAL_HIRES = Boolean.FALSE;
+    private static final Boolean INTERNAL_PROMOTIONS = Boolean.TRUE;
 
     private final EmployeeFactory _employeeFactory;
     private final PromotionUtil _promotionUtil;
@@ -130,7 +132,6 @@ public class Corporation extends Organization {
     }
 
     private void performResignations(long step) {
-        System.out.println("Resignations.");
         List<Employee> quitingTopPerformers = findQuitingTopPerformers();
 
         ConcurrentMap<Boolean, List<Employee>> quitingEmployeesByPromotionStatus = quitingTopPerformers.stream()
@@ -138,7 +139,7 @@ public class Corporation extends Organization {
 
         quitingEmployeesByPromotionStatus.getOrDefault(EXTERNAL_HIRES, emptyList()).stream()
                 .forEach(hireReplacement(step));
-        quitingEmployeesByPromotionStatus.getOrDefault(Boolean.TRUE, emptyList()).stream()
+        quitingEmployeesByPromotionStatus.getOrDefault(INTERNAL_PROMOTIONS, emptyList()).stream()
                 .forEach(promoteInternally(step));
     }
 
@@ -187,16 +188,8 @@ public class Corporation extends Organization {
     }
 
     private void hireReplacement(Employee emp, int hireWeek) {
-        Employee replacement = _employeeFactory.createEmployee(this, hireWeek, computeInitialKnowledge(emp));
+        Employee replacement = _employeeFactory.createEmployee(this, hireWeek);
         replaceEmployee(emp, replacement);
-    }
-
-    private double computeInitialKnowledge(Employee emp) {
-        return getManager(emp).flatMap(mgr -> {
-            Set<Employee> team = getSubordinates(mgr);
-            Optional<Double> maybeSumOfTeamKnowledge = team.stream().map(Employee::getKnowledge).reduce(Double::sum);
-            return maybeSumOfTeamKnowledge.map(sum -> sum / team.size());
-        }).orElse(1d);
     }
 
     private void replaceEmployee(Employee emp, Employee replacement) {

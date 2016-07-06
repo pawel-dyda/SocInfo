@@ -34,7 +34,7 @@ public class Worker implements Employee {
     public void updateKnowledge(long step) {
         double coworkersQuant = talkToCoworkers();
         double managerQuant = talkToManager();
-        double reducedLearningRate = _learningRate * KNOWLEDGE_AQUISITION_RATE / step - _hireWeek;
+        double reducedLearningRate = _learningRate * KNOWLEDGE_AQUISITION_RATE / (step - _hireWeek);
         _knowledge = _knowledge + reducedLearningRate * (_knowledge + coworkersQuant + managerQuant);
     }
 
