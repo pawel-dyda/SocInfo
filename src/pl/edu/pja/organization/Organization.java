@@ -1,5 +1,6 @@
 package pl.edu.pja.organization;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -20,5 +21,7 @@ public abstract class Organization extends SimState {
     public abstract Optional<Employee> getManager(Employee emp);
 
     public abstract double getKnowledgeUsabilityRate();
+
+    public abstract List<Result> getResults();
 
 }

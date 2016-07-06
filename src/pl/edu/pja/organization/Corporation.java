@@ -24,7 +24,6 @@ import pl.edu.pja.util.PromotionUtil;
 
 public class Corporation extends Organization {
 
-
     private static final long serialVersionUID = 3284328451738747302L;
 
     private static final int INITIAL_EMPLOYEE_ID = 1000;
@@ -35,9 +34,11 @@ public class Corporation extends Organization {
     private final EmployeeFactory _employeeFactory;
     private final PromotionUtil _promotionUtil;
     private final double _knowledgeUsabilityRate;
+    private final double _orgSize;
 
     private Map<Employee, Set<Employee>> _subordinates = new ConcurrentHashMap<>();
     private Map<Employee, Employee> _managers = new ConcurrentHashMap<>();
+    private List<Result> _results = emptyList();
     private Employee _ceo;
 
     private static final Comparator<Employee> compareByVirtualWork =
@@ -48,6 +49,7 @@ public class Corporation extends Organization {
         _knowledgeUsabilityRate = knowledgeUsabilityRate;
         _employeeFactory = new EmployeeFactory(seed, INITIAL_EMPLOYEE_ID);
         _promotionUtil = new PromotionUtil(seed);
+        _orgSize = (Math.pow(subordinates, levels) - 1) / (subordinates - 1);
         initialize(levels, subordinates);
     }
 
@@ -111,16 +113,23 @@ public class Corporation extends Organization {
     @Override
     public void start() {
         super.start();
-        System.out.println("start");
-        for (long step = 1; step < 52*16; step++) {
-            System.out.println("Step: " + step);
-            updateKnowledge(step);
-            performResignations(step);            
-            if (isEndOfTheQuarter(step)) {
-                reduceEmployees(step);
-            }
-            System.out.println(_ceo.getRealWorkPerformed());
+        int weeksPerYear = 52;
+        int simulationLengthInYears  = 16;
+        _results = IntStream.rangeClosed(1, (weeksPerYear * simulationLengthInYears) + 1).boxed()
+                .map(this::computeWeeklyResults)
+                .collect(toList());
+    }
+
+    private Result computeWeeklyResults(int week) {
+        updateKnowledge(week);
+        performResignations(week);            
+        if (isEndOfTheQuarter(week)) {
+            reduceEmployees(week);
         }
+        double workPerformed = _ceo.getRealWorkPerformed();
+        double reducedWorkPerformed = workPerformed / _orgSize;
+
+        return new Result(week, workPerformed, reducedWorkPerformed);
     }
 
     private void updateKnowledge(long step) {
@@ -288,6 +297,11 @@ public class Corporation extends Organization {
     @Override
     public double getKnowledgeUsabilityRate() {
         return _knowledgeUsabilityRate;
+    }
+
+    @Override
+    public List<Result> getResults() {
+        return _results;
     }
 
 }
