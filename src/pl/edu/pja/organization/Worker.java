@@ -41,6 +41,7 @@ public class Worker implements Employee {
     private double talkToCoworkers() {
         Set<Employee> coworkers = requireNonNull(_organization.getCoworkers(this));
         Optional<Double> maybeCoworkersUpdate = coworkers.stream()
+                .parallel()
                 .map(this::computeCoworkersKnowledgeUpdate)
                 .reduce(Double::sum);
         return maybeCoworkersUpdate.orElse(Double.valueOf(0d)).doubleValue();
@@ -50,7 +51,7 @@ public class Worker implements Employee {
         if (coworker instanceof Worker) {
             Worker other = (Worker) coworker;
             double attitude = _selfPromotion + other._selfPromotion;
-            double update = 0.8d - 1.33d * (attitude) * other._knowledge;
+            double update = 0.8d - 1.33d * attitude * other._knowledge;
 
             return Double.valueOf(update);
         }
@@ -84,14 +85,7 @@ public class Worker implements Employee {
     public double getRealWorkPerformed() {
         if (isManager()) {
             Set<Employee> subordinates = _organization.getSubordinates(this);
-            if (subordinates.size() != 8)
-            System.out.println("Sub count: " + subordinates.size());
             Optional<Double> maybeSubordinatesWork = subordinates.stream()
-                    .peek(e -> {
-                        if (e.equals(this)) {
-                            System.err.println("\n\n\nOOOOPPPPSSSS\n\n\n");
-                        }
-                    })
                     .map(Employee::getRealWorkPerformed)
                     .reduce(Double::sum);
             return getSelfRealWork() * maybeSubordinatesWork.orElse(Double.valueOf(0d)).doubleValue();
@@ -110,13 +104,8 @@ public class Worker implements Employee {
     }
 
     @Override
-    public double getVirtualWorkPerformed() {
-        Set<Employee> coworkers = _organization.getCoworkers(this);
-        Optional<Double> maybeSomeWork = coworkers.stream().map(Employee::getRealWorkPerformed).reduce(Double::sum);
-        double coworkersWork = maybeSomeWork.orElse(Double.valueOf(0d)).doubleValue();
-        int teamSize = coworkers.size() + 1;
-        double average = (coworkersWork + getRealWorkPerformed()) / teamSize;
-        return _selfPromotion + getRealWorkPerformed() / average;
+    public double getVirtualWorkPerformed(double teamAverage) {
+        return _selfPromotion + getRealWorkPerformed() / teamAverage;
     }
 
     @Override
@@ -128,7 +117,7 @@ public class Worker implements Employee {
     public void setKnowledge(double knowledge) {
         _knowledge = knowledge;
     }
-    
+
     @Override
     public int hashCode() {
         return _employeeId;

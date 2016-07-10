@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import pl.edu.pja.strategy.SimulationStrategy;
 import pl.edu.pja.util.PromotionUtil;
 
 public class Corporation extends Organization {
@@ -41,33 +42,30 @@ public class Corporation extends Organization {
     private List<Result> _results = emptyList();
     private Employee _ceo;
 
-    private static final Comparator<Employee> compareByVirtualWork =
-            (a, b) -> (int) Math.floor((a.getVirtualWorkPerformed() - b.getVirtualWorkPerformed()));
-
-    public Corporation(long seed, int levels, int subordinates, double knowledgeUsabilityRate) {
+    public Corporation(long seed, int levels, int subordinates, double knowledgeUsabilityRate, SimulationStrategy strategy) {
         super(seed);
         _knowledgeUsabilityRate = knowledgeUsabilityRate;
-        _employeeFactory = new EmployeeFactory(seed, INITIAL_EMPLOYEE_ID);
+        _employeeFactory = new EmployeeFactory(seed, INITIAL_EMPLOYEE_ID, strategy);
         _promotionUtil = new PromotionUtil(seed);
         _orgSize = (Math.pow(subordinates, levels) - 1) / (subordinates - 1);
         initialize(levels, subordinates);
     }
 
     private void initialize(int levels, int subordinatesCount) {
-        _ceo = _employeeFactory.createEmployee(this, START_WEEK);
-        Set<Employee> topLevelManagers = initializeLevel(_ceo, subordinatesCount);
+        _ceo = _employeeFactory.createEmployee(this, START_WEEK, true);
+        Set<Employee> topLevelManagers = initializeLevel(_ceo, subordinatesCount, true);
         _subordinates.put(_ceo, topLevelManagers);
         topLevelManagers.stream().forEach(manager -> initializeSubLevels(manager, levels - 1, subordinatesCount));
     }
 
-    private Set<Employee> initializeLevel(Employee manager, int subordinatesCount) {
-        Set<Employee> employees = generateEmployees(subordinatesCount);
+    private Set<Employee> initializeLevel(Employee manager, int subordinatesCount, boolean managersLevel) {
+        Set<Employee> employees = generateEmployees(subordinatesCount, managersLevel);
         initializeTeam(manager, employees);
         return employees;
     }
 
-    private Set<Employee> generateEmployees(int howMany) {
-        return IntStream.range(0, howMany).boxed().map(i -> _employeeFactory.createEmployee(this, START_WEEK))
+    private Set<Employee> generateEmployees(int howMany, boolean isManager) {
+        return IntStream.range(0, howMany).boxed().map(i -> _employeeFactory.createEmployee(this, START_WEEK, true))
                 .collect(Collectors.toSet());
     }
 
@@ -85,7 +83,7 @@ public class Corporation extends Organization {
         // Initialize unless everything is already initialized
         if (level == 0)
             return;
-        Set<Employee> directReports = initializeLevel(manager, subordinatesCount);
+        Set<Employee> directReports = initializeLevel(manager, subordinatesCount, level > 1);
         _subordinates.put(manager, directReports);
         directReports.stream().forEach(report -> initializeSubLevels(report, level - 1, subordinatesCount));
     }
@@ -210,7 +208,7 @@ public class Corporation extends Organization {
     }
 
     private void hireReplacement(Employee emp, int hireWeek) {
-        Employee replacement = _employeeFactory.createEmployee(this, hireWeek);
+        Employee replacement = _employeeFactory.createEmployee(this, hireWeek, emp.isManager());
         replaceEmployee(emp, replacement);
     }
 
@@ -251,7 +249,7 @@ public class Corporation extends Organization {
         // Hire replacement for internally promoted candidate
         // It's not likely that anybody will want to make drastic changes to the
         // structure
-        replaceEmployee(promotionCandidate, _employeeFactory.createEmployee(this, hiringWeek));
+        replaceEmployee(promotionCandidate, _employeeFactory.createEmployee(this, hiringWeek, promotionCandidate.isManager()));
         // update knowledge - not all of what you know could be applied one level above
         promotionCandidate.setKnowledge(promotionCandidate.getKnowledge() * _promotionUtil.getLevelUpKnowledgeApplicability());
         replaceEmployee(emp, promotionCandidate);
@@ -266,13 +264,24 @@ public class Corporation extends Organization {
     }
 
     private Employee findBestSelfPromoter(Employee manager) {
-        return getSubordinates(manager).stream().max(compareByVirtualWork).get();
+        Set<Employee> subordinates = getSubordinates(manager);
+        double averageTeamMemberWork = getAverageTeamMemberWork(subordinates);
+        return subordinates.stream().max(compareByVirtualWork(averageTeamMemberWork)).get();
     }
-    
+
+    private double getAverageTeamMemberWork(Set<Employee> team) {
+        return team.stream().map(Employee::getRealWorkPerformed).reduce(Double::sum).orElse(1d);
+    }
+
+    private Comparator<? super Employee> compareByVirtualWork(double averageTeamMemberWork) {
+        return (a, b) -> (int) Math.floor(
+                (a.getVirtualWorkPerformed(averageTeamMemberWork) - b.getVirtualWorkPerformed(averageTeamMemberWork)));
+    }
+
     private boolean isEndOfTheQuarter(long step) {
         return step % 13 == 0;
     }
-    
+
     private void reduceEmployees(long step) {
         Set<Employee> allManagers = getAllManagers();
         ConcurrentMap<Boolean, List<Employee>> employeesForReplacement = allManagers.stream()
@@ -288,7 +297,9 @@ public class Corporation extends Organization {
             if (_promotionUtil.shouldReduceSelfPromoter())
                 return Optional.of(manager).filter(Employee::isManager).map(this::findBestSelfPromoter);
 
-            return getSubordinates(manager).stream().min(compareByVirtualWork);
+            Set<Employee> subordinates = getSubordinates(manager);
+            double averageTeamMemberWork = getAverageTeamMemberWork(subordinates);
+            return subordinates.stream().min(compareByVirtualWork(averageTeamMemberWork));
         }
 
         return Optional.empty();

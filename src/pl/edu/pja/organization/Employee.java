@@ -6,7 +6,7 @@ public interface Employee {
 
 	double getRealWorkPerformed();
 
-	double getVirtualWorkPerformed();
+	double getVirtualWorkPerformed(double teamAverage);
 
 	double getKnowledge();
 
